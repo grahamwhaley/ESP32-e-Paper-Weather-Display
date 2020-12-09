@@ -316,10 +316,11 @@ void DrawMoon(int x, int y, int dd, int mm, int yy, String hemisphere) {
 // Squeeze some wind info into a tiny space - just the speed, direction, and an arrow
 // No nice compass :-(
 void DrawSmallWind(int x, int y, float angle, float windspeed) {
-#define Cradius 15
+//No circle radius - we want the arrow to rotate about a spot...
+#define Cradius 0
   float dx = Cradius * cos((angle - 90) * PI / 180) + x; // calculate X position
   float dy = Cradius * sin((angle - 90) * PI / 180) + y; // calculate Y position
-  arrow(x+12, y, Cradius - 3, angle, 10, 20); // Show wind direction as just an arrow
+  arrow(x+2, y, Cradius - 3, angle, 10, 20); // Show wind direction as just an arrow
   u8g2Fonts.setFont(u8g2_font_helvB08_tf);
   drawString(x, y+15, WindDegToDirection(angle), CENTER);
   drawString(x+5, y+25, String(windspeed, 1), CENTER);  
