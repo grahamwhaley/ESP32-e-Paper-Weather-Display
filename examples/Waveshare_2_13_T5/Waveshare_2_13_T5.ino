@@ -167,7 +167,7 @@ void DisplayWeather() {             // 2.13" e-paper display is 250x122 useable 
   // Not really enough space for these
   //if (WxConditions[0].Visibility > 0) Visibility(110, 40, String(WxConditions[0].Visibility) + "M");
   //if (WxConditions[0].Cloudcover > 0) CloudCover(110, 55, WxConditions[0].Cloudcover);
-  DrawBattery(20, 12);
+  DrawBattery(-10, 12);
 }
 //#########################################################################################
 // Help debug screen layout by drawing a grid of little crosses
@@ -192,8 +192,10 @@ void Draw_Grid() {
 void Draw_Heading_Section() {
   u8g2Fonts.setFont(u8g2_font_helvB08_tf);
   //display.drawRect(0,0,SCREEN_WIDTH,SCREEN_HEIGHT,GxEPD_BLACK);
-  drawString(95, 1, City, LEFT);
-  drawString(0, 1, time_str, LEFT);
+  drawString(65, 1, City, LEFT);
+  //Do not draw the time, as that is the update time, not the current actual time (it does
+  //not do per-minute updates for instance), so it is more confusing than useful.
+  //drawString(0, 1, time_str, LEFT);
   drawString(SCREEN_WIDTH, 1, date_str, RIGHT);
   display.drawLine(0, 11, SCREEN_WIDTH, 11, GxEPD_BLACK);
 }
