@@ -27,6 +27,7 @@
 #include <GxEPD2_BW.h>
 #include <GxEPD2_3C.h>
 #include <U8g2_for_Adafruit_GFX.h>
+#include <driver/adc.h>
 #include "forecast_record.h"
 #include "lang.h"                   // Localisation (English)
 //#include "lang_cz.h"                // Localisation (Czech)
@@ -95,14 +96,14 @@ int  SleepTime     = 23; // Sleep after (23+1) 00:00 to save battery power
 //#########################################################################################
 void setup() {
   StartTime = millis();
-  Serial.begin(115200);
+  log_i("%d: Starting", millis()-StartTime);
   if (StartWiFi() == WL_CONNECTED && SetupTime() == true) {
     //if ((CurrentHour >= WakeupTime && CurrentHour <= SleepTime)) {
-      Serial.println("Initialising Display");
+      log_i("%d: Initialising Display", millis()-StartTime);
       InitialiseDisplay(); // Give screen time to initialise by getting weather data!
       byte Attempts = 1;
       bool RxWeather = false, RxForecast = false;
-      Serial.println("Attempt to get weather");
+      log_i("%d: Attempt to get weather", millis()-StartTime);
       WiFiClient client;   // wifi client object
       while ((RxWeather == false || RxForecast == false) && Attempts <= 5) { // Try up-to 2 time for Weather and Forecast data
         if (RxWeather  == false) RxWeather  = obtain_wx_data(client, "weather");
@@ -111,7 +112,15 @@ void setup() {
       }
       if (RxWeather && RxForecast) { // Only if received both Weather or Forecast proceed
         StopWiFi(); // Reduces power consumption
-        Serial.println("Displaying Weather");        
+        //And down the clock rate - mostly now we are just spinning waiting for the display
+        //to do its stuff. We can go as low as xtal/2 == 20MHz
+        log_i("Dropping CPU frequency");
+#if CORE_DEBUG_LEVEL >= 0
+        log_i("Re-init serial port");
+        Serial.begin(115200);
+#endif
+        setCpuFrequencyMhz(20);
+        log_i("%d: Displaying Weather", millis()-StartTime);
         DisplayWeather();
         display.display(false); // Full screen update mode
       }
@@ -131,9 +140,9 @@ void BeginSleep() {
   pinMode(BUILTIN_LED, INPUT); // If it's On, turn it off and some boards use GPIO-5 for SPI-SS, which remains low after screen use
   digitalWrite(BUILTIN_LED, HIGH);
 #endif
-  Serial.println("Entering " + String(SleepTimer) + "-secs of sleep time");
-  Serial.println("Awake for : " + String((millis() - StartTime) / 1000.0, 3) + "-secs");
-  Serial.println("Starting deep-sleep period...");
+  log_i("%d: Entering %d-secs of sleep time", millis()-StartTime, SleepTimer);
+  log_i("Awake for : %f-secs", (millis() - StartTime) / 1000.0);
+  log_i("Starting deep-sleep period...");
   esp_deep_sleep_start();  // Sleep for e.g. 30 minutes
 }
 //#########################################################################################
@@ -391,7 +400,7 @@ void DrawPressureTrend(int x, int y, float pressure, String slope) {
 }
 //#########################################################################################
 void DisplayWXicon(int x, int y, String IconName, bool IconSize) {
-  Serial.println("Icon name: " + IconName);
+  log_d("Icon name: %s", IconName.c_str());
   if      (IconName == "01d" || IconName == "01n")  Sunny(x, y, IconSize, IconName);
   else if (IconName == "02d" || IconName == "02n")  MostlySunny(x, y, IconSize, IconName);
   else if (IconName == "03d" || IconName == "03n")  Cloudy(x, y, IconSize, IconName);
@@ -406,7 +415,8 @@ void DisplayWXicon(int x, int y, String IconName, bool IconSize) {
 }
 //#########################################################################################
 uint8_t StartWiFi() {
-  Serial.print("\r\nConnecting to: "); Serial.println(String(ssid));
+  log_i("Connecting to: ");
+  log_i("  %s", String(ssid).c_str());
   IPAddress dns(8, 8, 8, 8); // Google DNS
   WiFi.disconnect();
   WiFi.mode(WIFI_STA); // switch off AP
@@ -428,9 +438,9 @@ uint8_t StartWiFi() {
   }
   if (connectionStatus == WL_CONNECTED) {
     wifi_signal = WiFi.RSSI(); // Get Wifi Signal strength now, because the WiFi will be turned off to save power!
-    Serial.println("WiFi connected at: " + WiFi.localIP().toString());
+    log_i("WiFi connected at: %s", (WiFi.localIP().toString()).c_str());
   }
-  else Serial.println("WiFi connection *** FAILED ***");
+  else log_w("WiFi connection *** FAILED ***");
   return connectionStatus;
 }
 //#########################################################################################
@@ -452,14 +462,13 @@ boolean UpdateLocalTime() {
   struct tm timeinfo;
   char   time_output[30], day_output[30], update_time[30];
   while (!getLocalTime(&timeinfo, 5000)) { // Wait for 5-sec for time to synchronise
-    Serial.println("Failed to obtain time");
+    log_w("Failed to obtain time");
     return false;
   }
   CurrentHour = timeinfo.tm_hour;
   CurrentMin  = timeinfo.tm_min;
   CurrentSec  = timeinfo.tm_sec;
   //See http://www.cplusplus.com/reference/ctime/strftime/
-  Serial.println(&timeinfo, "%a %b %d %Y   %H:%M:%S");      // Displays: Saturday, June 24 2017 14:05:49
   if (Units == "M") {
     if ((Language == "CZ") || (Language == "DE") || (Language == "NL") || (Language == "PL") || (Language == "GR"))  {
       sprintf(day_output, "%s, %02u. %s %02u", weekday_D[timeinfo.tm_wday], timeinfo.tm_mday, month_M[timeinfo.tm_mon], (timeinfo.tm_year) % 100); // day_output >> So., 23. Juni 19 <<
@@ -479,14 +488,22 @@ boolean UpdateLocalTime() {
   }
   date_str = day_output;
   time_str = time_output;
+
+  log_i("Date/Time [%s][%s]", date_str.c_str(), time_str.c_str());
   return true;
 }
 //#########################################################################################
 void DrawBattery(int x, int y) {
   uint8_t percentage = 100;
-  float voltage = analogRead(35) / 4096.0 * 7.46;
+  float voltage;
+
+  //turn adc on/off as needed, to save power
+  adc_power_on();
+  voltage = analogRead(35) / 4096.0 * 7.46;
+  adc_power_off();
+  
   if (voltage > 1 ) { // Only display if there is a valid reading
-    Serial.println("Voltage = " + String(voltage));
+    log_i("Voltage = %f", voltage);
     percentage = 2836.9625 * pow(voltage, 4) - 43987.4889 * pow(voltage, 3) + 255233.8134 * pow(voltage, 2) - 656689.7123 * voltage + 632041.7303;
     if (voltage >= 4.20) percentage = 100;
     if (voltage <= 3.50) percentage = 0;
@@ -804,7 +821,7 @@ void drawStringMaxWidth(int x, int y, unsigned int text_width, String text, alig
 }
 //#########################################################################################
 void InitialiseDisplay() {
-  Serial.println("Begin InitialiseDisplay...");
+  log_i("Begin InitialiseDisplay...");
   display.init(0);
   SPI.end();
   SPI.begin(EPD_SCK, EPD_MISO, EPD_MOSI, EPD_CS);
@@ -817,7 +834,7 @@ void InitialiseDisplay() {
   u8g2Fonts.setFont(u8g2_font_helvB10_tf);   // Explore u8g2 fonts from here: https://github.com/olikraus/u8g2/wiki/fntlistall
   display.fillScreen(GxEPD_WHITE);
   display.setFullWindow();
-  Serial.println("... End InitialiseDisplay");
+  log_i("... End InitialiseDisplay");
 }
 
 /*
