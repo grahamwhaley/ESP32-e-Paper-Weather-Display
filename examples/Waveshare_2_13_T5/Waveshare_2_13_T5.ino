@@ -498,6 +498,7 @@ boolean UpdateLocalTime() {
 //#########################################################################################
 void DrawBattery(int x, int y) {
   uint8_t percentage = 100;
+  float warning_level = 3.4;  //At what voltage do we put the BAT warning on screen?
   float voltage;
 
   //turn adc on/off as needed, to save power
@@ -510,11 +511,19 @@ void DrawBattery(int x, int y) {
     percentage = 2836.9625 * pow(voltage, 4) - 43987.4889 * pow(voltage, 3) + 255233.8134 * pow(voltage, 2) - 656689.7123 * voltage + 632041.7303;
     if (voltage >= 4.20) percentage = 100;
     if (voltage <= 3.50) percentage = 0;
+    u8g2Fonts.setFont(u8g2_font_helvB08_tf);
     display.drawRect(x + 15, y - 12, 19, 10, GxEPD_BLACK);
     display.fillRect(x + 34, y - 10, 2, 5, GxEPD_BLACK);
     display.fillRect(x + 17, y - 10, 15 * percentage / 100.0, 6, GxEPD_BLACK);
     drawString(x + 60, y - 11, String(percentage) + "%", RIGHT);
     //drawString(x + 13, y + 5,  String(voltage, 2) + "v", CENTER);
+
+    if (voltage <= warning_level) {
+      log_i("Battery low voltage!");
+      u8g2Fonts.setFont(u8g2_font_helvB24_tf);
+      display.fillRect(25, 20, 200, 50, GxEPD_WHITE);
+      drawString(80, 37+12 , String("BATTERY!"), RIGHT);
+    }
   }
 }
 //#########################################################################################
